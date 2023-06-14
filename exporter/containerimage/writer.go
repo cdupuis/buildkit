@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cdupuis/openpubkey/in_toto"
+	"github.com/cdupuis/openpubkey/opk/sign"
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/diff"
 	"github.com/containerd/containerd/images"
@@ -249,8 +251,13 @@ func (ic *ImageWriter) Commit(ctx context.Context, inp *exporter.Source, session
 			if err != nil {
 				return nil, err
 			}
+			envs, err := sign.SignInTotoStatements(ctx, stmts, "https://token.actions.githubusercontent.com")
+			if err != nil {
+				return nil, err
+			}
 
-			desc, err := ic.commitAttestationsManifest(ctx, opts, p, desc.Digest.String(), stmts)
+			imageDigest := desc.Digest.String()
+			desc, err := ic.CommitAttestationsManifest(ctx, opts, p, imageDigest, envs, attestationTypes.DockerAnnotationReferenceTypeDefault)
 			if err != nil {
 				return nil, err
 			}
@@ -418,7 +425,7 @@ func (ic *ImageWriter) commitDistributionManifest(ctx context.Context, opts *Ima
 	}, &configDesc, nil
 }
 
-func (ic *ImageWriter) commitAttestationsManifest(ctx context.Context, opts *ImageCommitOpts, p exptypes.Platform, target string, statements []intoto.Statement) (*ocispecs.Descriptor, error) {
+func (ic *ImageWriter) CommitAttestationsManifest(ctx context.Context, opts *ImageCommitOpts, p exptypes.Platform, target string, envs []in_toto.Envelope, refType string) (*ocispecs.Descriptor, error) {
 	var (
 		manifestType = ocispecs.MediaTypeImageManifest
 		configType   = ocispecs.MediaTypeImageConfig
@@ -428,8 +435,8 @@ func (ic *ImageWriter) commitAttestationsManifest(ctx context.Context, opts *Ima
 		configType = images.MediaTypeDockerSchema2Config
 	}
 
-	layers := make([]ocispecs.Descriptor, len(statements))
-	for i, statement := range statements {
+	layers := make([]ocispecs.Descriptor, len(envs))
+	for i, statement := range envs {
 		i, statement := i, statement
 
 		data, err := json.Marshal(statement)
@@ -510,7 +517,7 @@ func (ic *ImageWriter) commitAttestationsManifest(ctx context.Context, opts *Ima
 		Size:      int64(len(mfstJSON)),
 		MediaType: manifestType,
 		Annotations: map[string]string{
-			attestationTypes.DockerAnnotationReferenceType:   attestationTypes.DockerAnnotationReferenceTypeDefault,
+			attestationTypes.DockerAnnotationReferenceType:   refType,
 			attestationTypes.DockerAnnotationReferenceDigest: target,
 		},
 	}, nil
