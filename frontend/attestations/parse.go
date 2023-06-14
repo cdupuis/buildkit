@@ -2,6 +2,7 @@ package attestations
 
 import (
 	"encoding/csv"
+	"os"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -58,7 +59,7 @@ func Parse(values map[string]string) (map[string]map[string]string, error) {
 		attrs := make(map[string]string)
 		out[k] = attrs
 		if k == KeyTypeSbom {
-			attrs["generator"] = defaultSBOMGenerator
+			attrs["generator"] = resolveSBOMGeneratorReference()
 		}
 		if v == "" {
 			continue
@@ -78,4 +79,13 @@ func Parse(values map[string]string) (map[string]map[string]string, error) {
 	}
 
 	return Validate(out)
+}
+
+// resolveSBOMGeneratorReference returns the name of the container image to use for generating SBOMs.
+func resolveSBOMGeneratorReference() string {
+	if v, ok := os.LookupEnv("BUILDKIT_SBOM_GENERATOR"); ok {
+		return v
+	} else {
+		return defaultSBOMGenerator
+	}
 }
